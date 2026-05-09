@@ -1,2 +1,2 @@
 # Jump-Cow
-A terminal game insipred by the dinosaure game by google
+A terminal game insipred by the dinosaure one by google
