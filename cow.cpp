@@ -1,15 +1,13 @@
-#include <cstddef>
-#include <cstdlib>
-#include <sched.h>
 #include <stdio.h>
-#include <stdbool.h>
-#include <thread>
-#include <time.h> // sleep
+
+// raw terminal mod
 #include <unistd.h>
-#include <termios.h> // raw terminal mod
+#include <termios.h>
+
+#include <cstdlib> // rdm && srand
+#include <thread> // sleep
 #include <pthread.h>
-#include <chrono>
-#include <ctime>
+
 #include <queue>
 
 
@@ -124,7 +122,6 @@ void printGui(const char gui[][60]){
 
 std::queue<char> keys;
 void* listenKeyboard(void* arg){
-    char c;
     while(true){
         keys.push(getchar());
     }
@@ -190,8 +187,6 @@ int main(){
     int score = 0;
     srand((time(nullptr)));
     while(true){
-        auto t_start = std::chrono::high_resolution_clock::now();
-       
         //clear
         printf("\x1b[2J");
         printf("\x1b[H");
