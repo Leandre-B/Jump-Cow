@@ -29,8 +29,6 @@ void enable_raw_mode()
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 }
 
-
-const double GRAVITY = 0.1;
 int GROUND = 11;
 
 struct Cow{
@@ -121,10 +119,13 @@ void printGui(const char gui[][60]){
 }
 
 std::queue<char> keys;
+int running = true;
+
 void* listenKeyboard(void* arg){
-    while(true){
+    while(running){
         keys.push(getchar());
     }
+    return nullptr;
 }
 
 bool collide(const Cow & cow, const Tree & tree){
@@ -149,6 +150,17 @@ bool collide(const Cow & cow, const Bird & bird){
     return false;
 }
 
+void quit(pthread_t & keyboardListener){
+    printf("Press any key to quit again\n");
+    running = false;
+    printf("\x1b[2J");
+    printf("\x1b[H");
+
+    pthread_join(keyboardListener, NULL);
+
+    restore_terminal();
+}
+
 int main(){
 
     enable_raw_mode();
@@ -158,7 +170,7 @@ int main(){
 
 
     char gui[][60] = {
-    "      Score :                                              ",
+    "      Score :                             (press q to quit)",
     "  _______________________________________________________  ",
     " /                                                       \\ ",
     "|                                                         |",
@@ -186,26 +198,39 @@ int main(){
     bool loose = false;
     int score = 0;
     srand((time(nullptr)));
+
+    // Game loop
     while(true){
         //clear
         printf("\x1b[2J");
         printf("\x1b[H");
 
+        // Process keyboard input
         if(!keys.empty()){
+            // Get most keyboard input that as not been handled
             char key = keys.front();
-            printf("%d", key);
+            //printf("%d", key);
             keys.pop();
+
+            // Z key -> make cow go up
             if(key == 122 and cow.y <= GROUND and GROUND >10)
                 --GROUND;
+
+            // S key -> make cow go down
             else if(key == 115 and GROUND <12)
                 ++GROUND;
+            // Space key -> make cow jump
             else if(key == 32 and cow.y == GROUND)
                 cow.speed = -cow.speed;
+
+            // R key -> reset
             else if(key == 114 && loose){
                 loose = false;
+
                 cow.x = 10; cow.y = GROUND;
                 if(cow.speed < 0)
                     cow.speed = -cow.speed;
+
                 tree.x = 50; tree.y = GROUND -1;
                 tree.delay = 60; tree.wait = 0; tree.speed = 0.5;
                 tree.active = false;
@@ -219,17 +244,24 @@ int main(){
                 //clear q
                 std::queue<char> empty;
                 keys.swap(empty);
+            }else if(key == 113){
+                quit(keyboardListener);
+                return 0;
             }
         }
 
+        // Playing
         if(!loose){
+            score +=1;
+
+            // Cow Y mouvement
             cow.y += cow.speed;
             if(cow.y < 5)
                 cow.speed = -cow.speed;
             if(cow.y > GROUND)
                 cow.y = GROUND;
 
-
+            // Choose what obstacle to display
             if(!tree.active && !bird.active && (tree.wait<=0 or bird.wait<=0)){
                 if(rand()%2 == 0)
                     tree.active = true;
@@ -239,6 +271,8 @@ int main(){
                 tree.speed += 0.01;
                 bird.speed += 0.01;
             }
+
+            // If tree is ofscreen -> reset
             if(tree.x <= 3){
                 tree.wait = tree.delay;
                 tree.x = 53;
@@ -246,33 +280,34 @@ int main(){
                 tree.delay -= 3;
                 tree.active = false;
             }
-            if(tree.active){
+            if(tree.active)
                 tree.x -= tree.speed;
-            }
-
-            if(!tree.active)
+            else
                 --tree.wait;
 
+            // If bird is ofscreen -> reset
             if(bird.x <= 3){
                 bird.wait = bird.delay;
-                bird.x      = 53;
+                bird.x = 53;
                 bird.y = rand()%5 + 7;
                 bird.delay -= 3;
                 bird.active = false;
             }
-            if(bird.active){
+            if(bird.active)
                 bird.x -= bird.speed;
-            }
-
-            if(!bird.active)
+            else
                 --bird.wait;
         
+            // Check collision between cow and objects
             if(collide(cow, tree) or collide(cow, bird))
                 loose = true;
         }
 
         printGui(gui);
         printf("\x1b[2;17H%d", score);
+
+        // Choose what cow sprite to display
+        // Switch every 10 frame
         if((score/10)%2==0 or cow.y!=GROUND)
             printDino(cow.sprite[0], cow.x, cow.y);
         else
@@ -282,19 +317,18 @@ int main(){
             printAbre(tree.sprite, tree.x, tree.y);
         if(bird.active)
             printBird(bird.sprite, bird.x, bird.y);
+
         if(loose){
             printf("\x1b[8;14H You loose ! Press r for retry");
         }
+
+        // Force display to terminal
         fflush(stdout);
-        score+=!loose;
+
+        //sleep 1/60 sec
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
-    printf("Perdu !");
-    while(true){
 
-    };
-
-    pthread_join(keyboardListener, NULL);
-    restore_terminal();
+    quit(keyboardListener);
     return 0;
 }
