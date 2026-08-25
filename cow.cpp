@@ -10,6 +10,15 @@
 
 #include <queue>
 
+struct InputsCode {
+    int UP      = 65;   // up arrow key
+    int DOWN    = 66;   // down arrow key
+    int SPACE    = 32;  // space key
+    int RESET   = 114;  // space key
+    int QUIT    = 113;  // space key
+};
+
+const int BASE_GROUND = 11;
 
 struct termios oldt;
 void restore_terminal()
@@ -29,8 +38,6 @@ void enable_raw_mode()
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 }
 
-int GROUND = 11;
-
 struct Cow{
     char sprite[2][2][4] = {
         {{' ', '_', '_', '0'},
@@ -38,9 +45,10 @@ struct Cow{
         {{' ', '_', '_', '0'},
         {'/', '|', '/', '|'}}
     };
-    double x = 10, y = GROUND;
+    double x = 10, y = BASE_GROUND;
     int height = 2, width = 4;
     double speed = 0.4;
+    int groundLevel = 0; // in [-1; 1] (relative to BASE_GROUND)
 };
 
 struct Tree{
@@ -49,7 +57,7 @@ struct Tree{
         {'|', ' ', '|',},
         {' ', '|', ' ',}
     };
-    double x = 50, y = GROUND -1;
+    double x = 50, y = 10;
     int height = 3, width = 3;
     int delay = 60;
     int wait = 0;
@@ -61,7 +69,7 @@ struct Bird{
     char sprite[1][3] = {
         {'<', '-', '-',},
     };
-    double x = 50, y = GROUND -5;
+    double x = 50, y = 9;
     int height = 1, width = 3;
     int delay = 60;
     int wait = 0;
@@ -69,17 +77,6 @@ struct Bird{
     bool active = false;
 };
 
-struct Cloud{
-    char sprite[1][3] = {
-        {'<', '-', '-',},
-    };
-    double x = 50, y = GROUND -5;
-    int height = 1, width = 3;
-    int delay = 60;
-    int wait = 0;
-    double speed = 0.7;
-    bool active = false;
-};
 
 void printDino(const char dino[2][4], int x, int y){
     for(int i=0; i<2; ++i){
@@ -91,7 +88,7 @@ void printDino(const char dino[2][4], int x, int y){
     }
 }
 
-void printAbre(const char dino[3][3], int x, int y){
+void printTree(const char dino[3][3], int x, int y){
     for(int i=0; i<3; ++i){
         for(int j=0; j<3; ++j){
             printf("\x1b[%d;%dH", y+i, x+j);
@@ -168,6 +165,8 @@ int main(){
     pthread_t keyboardListener;
     pthread_create(&keyboardListener, NULL, listenKeyboard, NULL);
 
+    InputsCode inputsCode;
+
 
     char gui[][60] = {
     "      Score :                             (press q to quit)",
@@ -191,8 +190,8 @@ int main(){
 
     };
 
-    Tree tree;
     Cow cow;
+    Tree tree;
     Bird bird;
 
     bool loose = false;
@@ -207,35 +206,30 @@ int main(){
 
         // Process keyboard input
         if(!keys.empty()){
-            // Get most keyboard input that as not been handled
+            // Get keyboard input that as not been handled
             char key = keys.front();
-            //printf("%d", key);
+            printf("%d", key);
             keys.pop();
 
-            // Z key -> make cow go up
-            if(key == 122 and cow.y <= GROUND and GROUND >10)
-                --GROUND;
-
-            // S key -> make cow go down
-            else if(key == 115 and GROUND <12)
-                ++GROUND;
-            // Space key -> make cow jump
-            else if(key == 32 and cow.y == GROUND)
+            if(key == inputsCode.UP && cow.y >= BASE_GROUND && cow.groundLevel > -1)
+                --cow.groundLevel;
+            else if(key == inputsCode.DOWN && cow.y <= BASE_GROUND && cow.groundLevel < 1)
+                ++cow.groundLevel;
+            else if(key == inputsCode.SPACE && cow.y == BASE_GROUND + cow.groundLevel)
                 cow.speed = -cow.speed;
-
-            // R key -> reset
-            else if(key == 114 && loose){
+            else if(key == inputsCode.RESET && loose){
                 loose = false;
 
-                cow.x = 10; cow.y = GROUND;
+                cow.x = 10; cow.y = BASE_GROUND;
+                cow.groundLevel = 0;
                 if(cow.speed < 0)
                     cow.speed = -cow.speed;
 
-                tree.x = 50; tree.y = GROUND -1;
+                tree.x = 50; tree.y = BASE_GROUND -1;
                 tree.delay = 60; tree.wait = 0; tree.speed = 0.5;
                 tree.active = false;
 
-                bird.x = 50; bird.y = GROUND -4;
+                bird.x = 50; bird.y = BASE_GROUND -4;
                 bird.delay = 60; bird.wait = 0; bird.speed = 0.5;
                 bird.active = false;
 
@@ -244,7 +238,7 @@ int main(){
                 //clear q
                 std::queue<char> empty;
                 keys.swap(empty);
-            }else if(key == 113){
+            }else if(key == inputsCode.QUIT){
                 quit(keyboardListener);
                 return 0;
             }
@@ -258,8 +252,8 @@ int main(){
             cow.y += cow.speed;
             if(cow.y < 5)
                 cow.speed = -cow.speed;
-            if(cow.y > GROUND)
-                cow.y = GROUND;
+            if(cow.y > BASE_GROUND + cow.groundLevel)
+                cow.y = BASE_GROUND + cow.groundLevel;
 
             // Choose what obstacle to display
             if(!tree.active && !bird.active && (tree.wait<=0 or bird.wait<=0)){
@@ -272,7 +266,8 @@ int main(){
                 bird.speed += 0.01;
             }
 
-            // If tree is ofscreen -> reset
+            // bird and tree are moved offscreen to the right when we need to hide it.
+
             if(tree.x <= 3){
                 tree.wait = tree.delay;
                 tree.x = 53;
@@ -285,7 +280,6 @@ int main(){
             else
                 --tree.wait;
 
-            // If bird is ofscreen -> reset
             if(bird.x <= 3){
                 bird.wait = bird.delay;
                 bird.x = 53;
@@ -307,14 +301,13 @@ int main(){
         printf("\x1b[2;17H%d", score);
 
         // Choose what cow sprite to display
-        // Switch every 10 frame
-        if((score/10)%2==0 or cow.y!=GROUND)
+        if((score/10)%2==0 or cow.y != BASE_GROUND + cow.groundLevel)
             printDino(cow.sprite[0], cow.x, cow.y);
         else
             printDino(cow.sprite[1], cow.x, cow.y);
 
         if(tree.active)
-            printAbre(tree.sprite, tree.x, tree.y);
+            printTree(tree.sprite, tree.x, tree.y);
         if(bird.active)
             printBird(bird.sprite, bird.x, bird.y);
 
